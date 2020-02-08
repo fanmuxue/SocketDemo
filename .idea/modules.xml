@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/SocketDemo.iml" filepath="$PROJECT_DIR$/SocketDemo.iml" />
+      <module fileurl="file://$PROJECT_DIR$/lib-clink/lib-clink.iml" filepath="$PROJECT_DIR$/lib-clink/lib-clink.iml" />
+      <module fileurl="file://$PROJECT_DIR$/sample-client/sample-client.iml" filepath="$PROJECT_DIR$/sample-client/sample-client.iml" />
+      <module fileurl="file://$PROJECT_DIR$/sample-foo/sample-foo.iml" filepath="$PROJECT_DIR$/sample-foo/sample-foo.iml" />
+      <module fileurl="file://$PROJECT_DIR$/sample-server/sample-server.iml" filepath="$PROJECT_DIR$/sample-server/sample-server.iml" />
+    </modules>
+  </component>
+</project>
