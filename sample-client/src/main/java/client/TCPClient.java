@@ -27,7 +27,7 @@ public class TCPClient {
     }
 
     public void send(String msg){
-        printStream.println(msg);
+        printStream.print(msg);
     }
 
 

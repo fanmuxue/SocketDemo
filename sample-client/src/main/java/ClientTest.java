@@ -34,7 +34,7 @@ public class ClientTest {
         }
         int size =0;
         final List<TCPClient> tcpClientList = new ArrayList<TCPClient>();
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 10; i++) {
             TCPClient tcpClient = TCPClient.startWith(info);
             if(tcpClient==null){
                 System.out.println("链接异常");
@@ -55,7 +55,7 @@ public class ClientTest {
             public void run() {
                 while(!done){
                     for(TCPClient tcpClient:tcpClientList){
-                        tcpClient.send("hello");
+                        tcpClient.send("hello\n");
                     }
                     try {
                         Thread.sleep(1000);

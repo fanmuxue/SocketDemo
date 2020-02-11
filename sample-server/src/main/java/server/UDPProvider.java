@@ -11,13 +11,18 @@ import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.util.UUID;
 
+/**
+ * 包含Provider 类
+ */
 public class UDPProvider {
 
     private static Provider PROVIDER_INSTANCE;
 
     public static void start(int port) {
+        //先判断PROVIDER_INSTANCE是否存在，如果存在就关闭，设为null
         stop();
         String sn = UUID.randomUUID().toString();
+        // 开始启动Provider监听
         Provider provider = new Provider(sn.getBytes(), port);
         provider.start();
         PROVIDER_INSTANCE = provider;
@@ -29,7 +34,7 @@ public class UDPProvider {
           PROVIDER_INSTANCE = null;
       }
     }
-
+//目的： 启动一个线程，为了监听客户端搜索服务器地址
     private static class Provider extends Thread {
         private final byte[] sn;
         private final int port;
@@ -48,10 +53,12 @@ public class UDPProvider {
 
             System.out.println("UDP开始......");
             try {
-                ds = new DatagramSocket(UDPConstants.PORT_SERVER);//监听端口
-                DatagramPacket receivePack = new DatagramPacket(buffer, buffer.length);//构建一个接受消息的packet
+                // 监听端口
+                ds = new DatagramSocket(UDPConstants.PORT_SERVER);
+                // 构建一个接受消息的packet
+                DatagramPacket receivePack = new DatagramPacket(buffer, buffer.length);
                 while(!done){
-                    //接收
+                    //接收信息 放入 receivePack
                     try{
                         ds.receive(receivePack);
                     }catch(IOException e){
@@ -87,6 +94,7 @@ public class UDPProvider {
                         int len = byteBuffer.position();
                         DatagramPacket datagramPacket = new DatagramPacket(byteBuffer.array(), len,
                                 receivePack.getAddress(), responsePort);
+                        //回送服务端端口信息
                         ds.send(datagramPacket);
                         System.out.println("UDPProvider response to:"+clientIp+":"+clientPort);
 
