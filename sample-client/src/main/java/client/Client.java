@@ -1,10 +1,16 @@
 package client;
 
+import clink.net.qiujuer.clink.core.IoContext;
+import clink.net.qiujuer.clink.impl.IoSelectorProvider;
+
 import java.io.*;
 
 public class Client {
 
     public static void main(String[] args) throws IOException {
+
+        IoContext.setup().ioProvider(new IoSelectorProvider()).start();
+
         ServerInfo info = ClientSearcher.searchServer(10000);
         System.out.println("Server:"+info);
 
@@ -22,6 +28,7 @@ public class Client {
                 tcpClient.exit();
             }
         }
+        IoContext.close();
     }
 
     private static void write(TCPClient tcpClient) throws IOException {
@@ -33,6 +40,7 @@ public class Client {
         do {
             String str = input.readLine();
             tcpClient.send(str); //发送打印到服务端
+
 
             if("00bye00".equals(str)){
                 break;

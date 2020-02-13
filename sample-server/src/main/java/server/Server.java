@@ -12,7 +12,7 @@ public class Server {
     public static void main(String[] args) throws IOException {
         //通过setup()   new StartedBoot()
         //ioProvider()  吧ioProvider放入StartedBoot的属性中
-        //start()  创建一个new IoContext(ioProvider) 的单例
+        //start()  创建一个 new IoContext(ioProvider) 的单例
         //IoSelectorProvider 开启两个线程，一个用来读，一个用来写
         IoContext.setup().ioProvider(new IoSelectorProvider()).start();
 

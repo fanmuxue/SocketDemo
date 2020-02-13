@@ -1,6 +1,10 @@
 package clink.net.qiujuer.clink.core;
 
+import clink.net.qiujuer.clink.box.StringReveicePacket;
+import clink.net.qiujuer.clink.box.StringSendPacket;
 import clink.net.qiujuer.clink.impl.SocketChannelAdapter;
+import clink.net.qiujuer.clink.impl.async.AsyncReceiveDispatcher;
+import clink.net.qiujuer.clink.impl.async.AsyncSendDispatcher;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -13,6 +17,8 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
     private SocketChannel channel;
     private Sender sender;
     private Receiver receiver;
+    private SendDispatcher sendDispatcher;
+    private ReceiveDispatcher receiveDispatcher;
 
     public void setup(SocketChannel channel) throws IOException{
         this.channel = channel;
@@ -25,10 +31,22 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
         this.receiver = socketChannelAdapter;
         /*channel.configureBlocking(false);*/
         //读消息
-        readNextMessage();
+        /*readNextMessage();*/
+        sendDispatcher = new AsyncSendDispatcher(sender);
+        receiveDispatcher = new AsyncReceiveDispatcher(receiver,receivePacketCallback);
+        //启动接收
+        receiveDispatcher.start();
     }
 
-    private void readNextMessage(){
+    public void send(String msg){
+
+        //初始化一个packet
+        SendPacket SendPacket = new StringSendPacket(msg);
+        sendDispatcher.send(SendPacket);
+
+    }
+
+    /*private void readNextMessage(){
        if(receiver!=null){
            try {
                receiver.receiveAsync(echoReceiveListener);
@@ -36,10 +54,14 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
                System.out.println("开始接受数据异常:"+e.getMessage());
            }
        }
-    }
+    }*/
 
     public void close() throws IOException {
-
+        receiveDispatcher.close();
+        sendDispatcher.close();
+        sender.close();
+        receiver.close();
+        channel.close();
     }
 
     public void onChannelClosed(SocketChannel channel) {
@@ -49,7 +71,8 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
         System.out.println(key.toString()+":"+msg);
     }
 
-    private IoArgs.IoArgsEventListener echoReceiveListener = new IoArgs.IoArgsEventListener() {
+
+    /* private IoArgs.IoArgsEventListener echoReceiveListener = new IoArgs.IoArgsEventListener() {
         public void onStarted(IoArgs args) {
 
         }
@@ -58,6 +81,18 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
             onReceiveNewMessage(args.bufferString());
             //读取并且开始读下一条数据
             readNextMessage();
+        }
+    }; */
+
+    private ReceiveDispatcher.ReceivePacketCallback  receivePacketCallback = new ReceiveDispatcher.ReceivePacketCallback(){
+
+        public void onReceivePacketCompleted(ReceivePacket packet) {
+            //判断接受的数据类型
+            if(packet instanceof StringReveicePacket){
+                String msg = ((StringReveicePacket)packet).string();
+                //把数据往外抛
+                onReceiveNewMessage(msg);
+            }
         }
     };
 

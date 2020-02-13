@@ -7,7 +7,6 @@ import clink.net.qiujuer.clink.core.Sender;
 import com.Socket2.L5ReceiveSend.Utils.CloseUtils;
 
 import java.io.IOException;
-import java.net.Socket;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,6 +23,8 @@ public class SocketChannelAdapter implements Receiver,Sender,Cloneable {
     private IoArgs.IoArgsEventListener receiveIoEventListener;
     private IoArgs.IoArgsEventListener sendIoEventListener;
 
+    //定义一个变量，从外层传递过来的
+    private IoArgs receiveArgsTemp;
     public SocketChannelAdapter(SocketChannel channel,IoProvider ioProvider,
                                 OnChannelStatusChangedListener listener) throws IOException {
         this.channel = channel;
@@ -33,18 +34,20 @@ public class SocketChannelAdapter implements Receiver,Sender,Cloneable {
         channel.configureBlocking(false);
     }
 
+    public void setReceiveAsync(IoArgs.IoArgsEventListener listener) {
 
-    //异步接受消息  传进来调用方类中new出来的IoArgsEventListener
-    public boolean receiveAsync(IoArgs.IoArgsEventListener listener) throws IOException {
+        this.receiveIoEventListener = listener;
+    }
+
+    public boolean receiveAsync(IoArgs ioArgs) throws IOException {
         if(isClosed.get()){
-           throw new IOException("current channel is closed");
+            throw new IOException("current channel is closed");
         }
-
-        receiveIoEventListener = listener;
-
+        receiveArgsTemp = ioArgs;
         //此时ioProvider已经new到，这里直接调用     inputCallBack作为一个属性，已经new
         return ioProvider.registerInput(channel,inputCallBack);
     }
+
 
     public boolean sendAsync(IoArgs ioArgs, IoArgs.IoArgsEventListener listener) throws IOException {
         if(isClosed.get()){
@@ -77,17 +80,20 @@ public class SocketChannelAdapter implements Receiver,Sender,Cloneable {
             if(isClosed.get()){
                 return;
             }
-            IoArgs args = new IoArgs();
+            IoArgs args = receiveArgsTemp;
+            //尝试吧args，交给外层去处理缓存上的操作
             IoArgs.IoArgsEventListener receiveIoEventListener = SocketChannelAdapter.this.receiveIoEventListener;
-            if(receiveIoEventListener!=null){
+            /*if(receiveIoEventListener!=null){
                 //开始时，回调
                 receiveIoEventListener.onStarted(args);
-            }
+            }*/
+            //开始时，回调
+            receiveIoEventListener.onStarted(args);
             /*receiveIoEventListener.onStarted(args);*/
 
             //具体的读取操作
             try {
-                if(args.read(channel)>0&&receiveIoEventListener!=null){
+                if(args.readFrom(channel)>0){
                     //读取完成的回调  读取并开始读下一条消息
                     receiveIoEventListener.onCompleted(args);
                 }else{
@@ -108,10 +114,29 @@ public class SocketChannelAdapter implements Receiver,Sender,Cloneable {
             if(isClosed.get()){
                 return;
             }
-            //TODO
-            sendIoEventListener.onCompleted(null);
+
+            IoArgs args = getAttach();
+            //拿到返回的回调
+            IoArgs.IoArgsEventListener listener = SocketChannelAdapter.this.sendIoEventListener;
+            listener.onStarted(args);
+
+            //具体的读取操作
+            try {
+                // 这里认为listener不可能为空
+                if(args.writeTo(channel)>0){
+                    //读取完成的回调  读取并开始读下一条消息
+                    listener.onCompleted(args);
+                }else{
+                    throw new IOException("cannot write any data!");
+                }
+
+            } catch (IOException e) {
+                CloseUtils.close(SocketChannelAdapter.this);
+            }
+
         }
     };
+
 
     //channel发生异常的回调
     public interface OnChannelStatusChangedListener{

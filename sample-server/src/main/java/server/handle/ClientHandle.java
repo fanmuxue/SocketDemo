@@ -22,70 +22,43 @@ import java.util.concurrent.Executors;
 包含 ClientWriteHandle 类
          其中再包含 WriteRunable
  */
-public class ClientHandle {
+public class ClientHandle extends Connector{
 
-        private final Connector connector;
-        private final SocketChannel socketChannel;
-        private final ClientWriteHandle writeHandle;
         private final ClientHandleCallBack clientHandleCallBack;
         private final String clientMsg;
 
         public ClientHandle(SocketChannel socketChannel, ClientHandleCallBack clientHandleCallBack) throws IOException {
-            this.socketChannel = socketChannel;
-            //把客户端socket渠道 new出来
-
-            //匿名内部类
-            this.connector = new Connector(){
-                @Override
-                public void onChannelClosed(SocketChannel channel) {
-                    super.onChannelClosed(channel);
-                    exitBySelf();
-                }
-
-                @Override
-                protected void onReceiveNewMessage(String msg) {
-                    //打印接收到的新消息
-                    super.onReceiveNewMessage(msg);
-                    //异步处理接收到的信息 启动一个线程池来给多个客户端发送消息
-                    clientHandleCallBack.onNewMessageArrived(ClientHandle.this,msg);
-                }
-            };
-            //1.创建SocketChannelAdapter 2.读取数据在这里面
-            connector.setup(socketChannel);
-
-/*            socketChannel.configureBlocking(false);
-            Selector readSelector = Selector.open();
-            socketChannel.register(readSelector, SelectionKey.OP_READ);*/
-
-            //得到一个 选择器 用于发送数据
-            Selector writeSelector = Selector.open();
-            //把客户端channel注册到 写选择器
-            socketChannel.register(writeSelector, SelectionKey.OP_WRITE);
-
-            //设置非阻塞模式
-            this.writeHandle = new ClientWriteHandle(writeSelector) ;
-
             this.clientHandleCallBack = clientHandleCallBack;
-            this.clientMsg =socketChannel.getLocalAddress().toString() ;
+            //把客户端socket渠道 new出来
+            /*this.clientMsg =socketChannel.getLocalAddress().toString() ;*/
+            clientMsg = socketChannel.getRemoteAddress().toString();
             System.out.println("新客户端连接:"+clientMsg);
+            setup(socketChannel);
         }
 
-        public String getClientMsg() {
-        return clientMsg;
-    }
-
         public void exit() {
-            writeHandle.exit();
-            CloseUtils.close(socketChannel);
+            CloseUtils.close(this);
             System.out.println("客户端已经退出："+ clientMsg);
         }
 
-        public void send(String str){
+        @Override
+        public void onChannelClosed(SocketChannel channel) {
+            super.onChannelClosed(channel);
+            exitBySelf();
+        }
+
+        @Override
+        protected void onReceiveNewMessage(String msg) {
+            super.onReceiveNewMessage(msg);
+            clientHandleCallBack.onNewMessageArrived(this,msg);
+        }
+
+        /* public void send(String str){
             //writeHandle类的存在就是为了传递str
             //然后再通过单线程池 吧str送到 thread类中，异步执行 写操作
             writeHandle.send(str);
 
-        }
+        }*/
 
 
         public void exitBySelf() {
@@ -103,7 +76,7 @@ public class ClientHandle {
     //这个类存在的目的： ClientWriteHandle类的存在就是为了传递str
     //然后再通过单线程池 吧str送到 thread类中，异步执行 写操作
     //缺点: 有多少客户端发送数据，就有多少条线程启动
-    private class ClientWriteHandle{
+    /*private class ClientWriteHandle{
             private boolean done=false;
             private final Selector selector;
             private final ByteBuffer byteBuffer;
@@ -163,7 +136,7 @@ public class ClientHandle {
 
                 }
             }
-    }
+    }*/
 
 
 }
