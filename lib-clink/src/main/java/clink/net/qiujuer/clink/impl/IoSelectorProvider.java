@@ -18,7 +18,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class IoSelectorProvider implements IoProvider,Cloneable {
+public class IoSelectorProvider implements IoProvider, Cloneable {
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
     //用原子布尔值做锁
     private final AtomicBoolean inRegInput = new AtomicBoolean(false);
@@ -28,8 +28,8 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
     private final Selector readSelector;
     private final Selector writeSelector;
 
-    private final HashMap<SelectionKey,Runnable> inputCallbackMap = new HashMap<SelectionKey, Runnable>();
-    private final HashMap<SelectionKey,Runnable> outputCallbackMap = new HashMap<SelectionKey, Runnable>();
+    private final HashMap<SelectionKey, Runnable> inputCallbackMap = new HashMap<SelectionKey, Runnable>();
+    private final HashMap<SelectionKey, Runnable> outputCallbackMap = new HashMap<SelectionKey, Runnable>();
 
 
     private final ExecutorService inputHandlPool;
@@ -49,15 +49,16 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
         startRead();
         startWrite();
     }
+
     //异步的，独立于线程池之外的
-    private void startRead(){
-        Thread thread = new Thread("Clink IoSelectorProvider ReadSelector Thread"){
+    private void startRead() {
+        Thread thread = new Thread("Clink IoSelectorProvider ReadSelector Thread") {
             @Override
             public void run() {
-                while (!isClosed.get()){
+                while (!isClosed.get()) {
                     try {
                         //selector没有可用待处理的数据
-                        if(readSelector.select()==0){
+                        if (readSelector.select() == 0) {
                             waitSelection(inRegInput);
                             continue;
                         }
@@ -65,10 +66,10 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
                         Set<SelectionKey> selectionKeys = readSelector.selectedKeys();
                         for (SelectionKey selectionKey : selectionKeys) {
                             //遍历是否有效
-                           if(selectionKey.isValid()){
-                                 handleSelection(selectionKey,SelectionKey.OP_READ,
-                                         inputCallbackMap,inputHandlPool);
-                           }
+                            if (selectionKey.isValid()) {
+                                handleSelection(selectionKey, SelectionKey.OP_READ,
+                                        inputCallbackMap, inputHandlPool);
+                            }
                         }
                         //遍历完成后，清理所有就绪通道
                         selectionKeys.clear();
@@ -88,12 +89,12 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
         key.interestOps(key.readyOps() & ~keyOpAccept);
 
         Runnable runnable = null;
-        try{
+        try {
             //拿到当前的线程
             runnable = map.get(key);
-        }catch (Exception ignored){
+        } catch (Exception ignored) {
         }
-        if(runnable !=null&& !pool.isShutdown()){
+        if (runnable != null && !pool.isShutdown()) {
             //线程池执行当前通道获取的下一条
             pool.execute(runnable);
         }
@@ -101,22 +102,22 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
     }
 
 
-    private void startWrite(){
-        Thread thread = new Thread("Clink IoSelectorProvider WriteSelector Thread"){
+    private void startWrite() {
+        Thread thread = new Thread("Clink IoSelectorProvider WriteSelector Thread") {
             @Override
             public void run() {
-                while (!isClosed.get()){
+                while (!isClosed.get()) {
                     try {
-                        if(writeSelector.select()==0){
+                        if (writeSelector.select() == 0) {
                             waitSelection(inRegOutput);
                             continue;
                         }
 
                         Set<SelectionKey> selectionKeys = writeSelector.selectedKeys();
                         for (SelectionKey selectionKey : selectionKeys) {
-                            if(selectionKey.isValid()){
-                                handleSelection(selectionKey,SelectionKey.OP_WRITE,
-                                        outputCallbackMap,outputHandlPool);
+                            if (selectionKey.isValid()) {
+                                handleSelection(selectionKey, SelectionKey.OP_WRITE,
+                                        outputCallbackMap, outputHandlPool);
                             }
                         }
                         selectionKeys.clear();
@@ -134,16 +135,16 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
 
     public boolean registerInput(SocketChannel channel, HandleInputCallBack callBack) {
         //查看是否注册 如果注册就取消重新注册，否则就直接注册，并且吧HandleInputCallBack put进入inputCallbackMap
-        return registerSelectionKey(channel,readSelector,SelectionKey.OP_READ,inRegInput,inputCallbackMap,callBack)!=null;
+        return registerSelectionKey(channel, readSelector, SelectionKey.OP_READ, inRegInput, inputCallbackMap, callBack) != null;
     }
 
     public boolean registerOutput(SocketChannel channel, HandleOutputCallBack callBack) {
-        return registerSelectionKey(channel,writeSelector,SelectionKey.OP_WRITE,inRegOutput,outputCallbackMap,callBack)!=null;
+        return registerSelectionKey(channel, writeSelector, SelectionKey.OP_WRITE, inRegOutput, outputCallbackMap, callBack) != null;
     }
 
-    private static void waitSelection(final AtomicBoolean locker){
-        synchronized (locker){
-            if(locker.get()){
+    private static void waitSelection(final AtomicBoolean locker) {
+        synchronized (locker) {
+            if (locker.get()) {
                 try {
                     locker.wait();
                 } catch (InterruptedException e) {
@@ -154,8 +155,8 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
     }
 
     private static SelectionKey registerSelectionKey(SocketChannel channel, Selector selector, int registerOps, AtomicBoolean locker,
-                          HashMap<SelectionKey,Runnable> map,Runnable runnable){
-        synchronized (locker){
+                                                     HashMap<SelectionKey, Runnable> map, Runnable runnable) {
+        synchronized (locker) {
             //设置处于锁定状态   locker被final修饰
             locker.set(true);
             try {
@@ -175,48 +176,49 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
                     //注册selector得到key
                     key = channel.register(selector, registerOps);
                     //注册回调
-                    map.put(key,runnable);
+                    map.put(key, runnable);
                 }
 
                 return key;
-            }catch (ClosedChannelException e){
+            } catch (ClosedChannelException e) {
                 return null;
-            }finally {
+            } finally {
                 //解除锁定状态
                 locker.set(false);
-                try{
+                try {
                     locker.notify();
-                }catch (Exception e){
+                } catch (Exception e) {
                 }
 
             }
         }
 
     }
-    private static void unRegisterSelection(SocketChannel channel, Selector selector, Map<SelectionKey,Runnable> map){
-      if(channel.isRegistered()){
-          SelectionKey key = channel.keyFor(selector);
-          if(key!=null){
-              // key.interestOps(key.readyOps() & ~keyOpAccept); 也可以取消
-              key.cancel(); //取消监听的另一种方法  取消所有
-              map.remove(key);
-              selector.wakeup(); // 继续下一次selector操作
 
-          }
-      }
+    private static void unRegisterSelection(SocketChannel channel, Selector selector, Map<SelectionKey, Runnable> map) {
+        if (channel.isRegistered()) {
+            SelectionKey key = channel.keyFor(selector);
+            if (key != null) {
+                // key.interestOps(key.readyOps() & ~keyOpAccept); 也可以取消
+                key.cancel(); //取消监听的另一种方法  取消所有
+                map.remove(key);
+                selector.wakeup(); // 继续下一次selector操作
+
+            }
+        }
     }
 
     public void unRegisterInput(SocketChannel channel) {
-        unRegisterSelection(channel,readSelector,inputCallbackMap);
+        unRegisterSelection(channel, readSelector, inputCallbackMap);
     }
 
     public void unRegisterOutput(SocketChannel channel) {
-        unRegisterSelection(channel,writeSelector,outputCallbackMap);
+        unRegisterSelection(channel, writeSelector, outputCallbackMap);
 
     }
 
     public void close() {
-        if(isClosed.compareAndSet(false,true)){
+        if (isClosed.compareAndSet(false, true)) {
             inputHandlPool.shutdown();
             outputHandlPool.shutdown();
 
@@ -226,7 +228,7 @@ public class IoSelectorProvider implements IoProvider,Cloneable {
             readSelector.wakeup();
             writeSelector.wakeup();
 
-            CloseUtils.close(readSelector,writeSelector);
+            CloseUtils.close(readSelector, writeSelector);
         }
     }
 

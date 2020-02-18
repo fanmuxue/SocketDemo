@@ -12,8 +12,11 @@ public interface ReceiveDispatcher extends Closeable{
 
     void stop();
 
+
     //接收到数据时，通知到外层
     interface  ReceivePacketCallback{
+        ReceivePacket<?,?> onArrivedNewPacket(byte type,long length);
+
         void onReceivePacketCompleted(ReceivePacket packet);
     }
 }

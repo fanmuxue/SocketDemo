@@ -6,7 +6,10 @@ import clink.net.qiujuer.clink.core.SendPacket;
 import clink.net.qiujuer.clink.core.Sender;
 import com.Socket2.L5ReceiveSend.Utils.CloseUtils;
 
+import java.io.Closeable;
 import java.io.IOException;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -14,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 发送数据的调度封装
  */
-public class AsyncSendDispatcher implements SendDispatcher{
+public class AsyncSendDispatcher implements SendDispatcher, IoArgs.IoArgsEventProcessor, AsyncPacketReader.PacketProvider {
     private final Sender sender;
     private final Queue<SendPacket> queue = new ConcurrentLinkedQueue<SendPacket>();
     //有数据到达，放入queue,如果当前正在传输中，
@@ -22,114 +25,114 @@ public class AsyncSendDispatcher implements SendDispatcher{
     private final AtomicBoolean isSending = new AtomicBoolean();
     //当前发送时候已经被关闭
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
+    private final AsyncPacketReader reader = new AsyncPacketReader(this);
+    private final Object queueLock = new Object();
 
-
-    //当前发送的数据，转成一个IoArgs
-    private SendPacket packetTemp;
-    private IoArgs ioArgs = new IoArgs();
-    //由于packetTemp 可能比IoArgs 大，需要一个进度来维护
-    private int total; //当前packet最大的值
-    private int position;//当前packet发送了多长
-
-
-
-    public AsyncSendDispatcher(Sender sender){
-        this.sender =sender;
+    public AsyncSendDispatcher(Sender sender) {
+        this.sender = sender;
+        sender.setSendListener(this);
     }
 
     public void send(SendPacket packet) {
-        //当有数据来时，放入队列中
-        queue.offer(packet);
-        if(isSending.compareAndSet(false,true)){
-            sendNextPacket();
+        synchronized (queueLock) {
+            //当有数据来时，放入队列中
+            queue.offer(packet);
+            if (isSending.compareAndSet(false, true)) {
+                if (reader.requestTaskPacket()) {
+                    //sendNextPacket(); 请求网络进行发送
+                    requestSend();
+                }
+            }
         }
     }
 
-    private void sendNextPacket() {
-        //如果发送下一条，当前这条还不等于或者这条赋值还有
-        // 吧发送状态关闭
-        SendPacket temp = packetTemp;
-        if(temp!=null){
-            CloseUtils.close(temp);
+    public void cancel(SendPacket packet) {
+        boolean ret;
+        synchronized (queueLock) {
+            ret = queue.remove(packet);
         }
-        //关闭后，再去拿一个新的包，以便没有损坏最初的包，不会导致内存泄漏的问题
-        SendPacket sendPacket = this.packetTemp =takePacket();
-        if(sendPacket==null){
-            //队列为空，取消状态发送
-            isSending.set(false);
+        if (ret) {
+            packet.cancel();
             return;
         }
-        total = sendPacket.length();
-        position = 0;
-
-        sendCurrentPacket();
+        //真正的取消
+        reader.cancel(packet);
     }
 
-    private void sendCurrentPacket() {
-        IoArgs ioArgs = this.ioArgs;
-        //开始清理
-        ioArgs.startWriting();
-        if(position>=total){ //发送完了，发送下一条
-            sendNextPacket();
-            return;
-        }else if(position ==0){ //刚刚开始发送
-            //首包 ，需要携带长度信息
-            ioArgs.writeLength(total);
+    public SendPacket takePacket() {
+        SendPacket packet;
+        synchronized (queueLock) {
+            packet = queue.poll();
+            if (packet == null) {
+                //队列为空，取消发送状态
+                isSending.set(false);
+                return null;
+            }
         }
-
-        byte[] bytes = packetTemp.bytes();
-        //把bytes的数据写入到IoArgs
-        int count = ioArgs.readFrom(bytes, position);
-        position +=count;
-
-        //完成封装
-        ioArgs.finishWriting();
-
-        //还需要一个进度的回调
-        try {
-            sender.sendAsync(ioArgs,ioArgsEventListener);
-        } catch (IOException e) {
-            //如果异常了，关闭自己并且通知到外层
-            closeAndNotify();
-        }
-    }
-
-    private void closeAndNotify() {
-        CloseUtils.close(this);
-    }
-
-    private final IoArgs.IoArgsEventListener ioArgsEventListener = new IoArgs.IoArgsEventListener() {
-        public void onStarted(IoArgs args) {
-
-        }
-
-        public void onCompleted(IoArgs args) {
-            //继续发送当前包，因为当前包有可能还没有完成
-            sendCurrentPacket();
-        }
-    };
-
-    private SendPacket takePacket(){
-        SendPacket packet = queue.poll();
-        if(packet!=null&& packet.isCanceled()){
+        //如果packet不为空
+        if (packet != null && packet.isCanceled()) {
             //已取消，不用发送  如果取消了，拿下一条
             return takePacket();
         }
         return packet;
     }
 
-    public void cancel(SendPacket packet) {
+    /**
+     * 完成packet发送
+     */
+    public void completedPacket(SendPacket packet, boolean isSucceed) {
+        //其他的交给reader去做了，仅仅关闭packet
+        CloseUtils.close(packet);
+    }
 
+    // 请求网络进行数据发送
+    // 有两个缺陷
+    //1.发送有可能失败，2。在进行一个可输出的数据之前，已经把数据存在args,已经把通道打开了
+    //注册一个监听的操作
+    private void requestSend() {
+
+        try {
+            sender.postSendAsync();
+        } catch (IOException e) {
+            //如果异常了，关闭自己并且通知到外层
+            closeAndNotify();
+        }
+    }
+
+
+    private void closeAndNotify() {
+        CloseUtils.close(this);
     }
 
     public void close() throws IOException {
-        if(isClosed.compareAndSet(false,true)){
+        if (isClosed.compareAndSet(false, true)) {
             isSending.set(false);
-            SendPacket packet = packetTemp;
-            if(packet!=null){
-                packetTemp = null;
-                CloseUtils.close(packet);
-            }
+            //吧关闭交给了reader
+            reader.close();
+        }
+    }
+
+    /**
+     * 提供数据
+     *
+     * @return
+     */
+    public IoArgs provideIoArgs() {
+        return reader.fillData();
+    }
+
+    public void onConsumeFailed(IoArgs args, Exception e) {
+        if (args != null) {
+            e.printStackTrace();
+        } else {
+            //TODO
+        }
+
+    }
+
+    public void onConsumeCompleted(IoArgs args) {
+        if (reader.requestTaskPacket()) {
+            requestSend();
         }
     }
 }

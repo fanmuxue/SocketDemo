@@ -1,7 +1,9 @@
 import client.ClientSearcher;
 import client.ServerInfo;
 import client.TCPClient;
+import contants.Foo;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +28,8 @@ public class ClientTest {
     //性能压测
     // 1000个数据发送  1000个客户端  90多M内存  50%cpu  2000多个线程
     public static void main(String[] args) throws IOException, InterruptedException {
+        File cachePath = Foo.getCacheDir("client/test");
+
         ServerInfo info = ClientSearcher.searchServer(10000);
         System.out.println("Server:"+info);
 
@@ -35,7 +39,7 @@ public class ClientTest {
         int size =0;
         final List<TCPClient> tcpClientList = new ArrayList<TCPClient>();
         for (int i = 0; i < 10; i++) {
-            TCPClient tcpClient = TCPClient.startWith(info);
+            TCPClient tcpClient = TCPClient.startWith(info,cachePath);
             if(tcpClient==null){
                 System.out.println("链接异常");
                 continue;

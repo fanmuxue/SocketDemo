@@ -1,5 +1,7 @@
 package clink.net.qiujuer.clink.core;
 
+import clink.net.qiujuer.clink.box.BytesReceivePacket;
+import clink.net.qiujuer.clink.box.FileReceivePacket;
 import clink.net.qiujuer.clink.box.StringReveicePacket;
 import clink.net.qiujuer.clink.box.StringSendPacket;
 import clink.net.qiujuer.clink.impl.SocketChannelAdapter;
@@ -7,13 +9,14 @@ import clink.net.qiujuer.clink.impl.async.AsyncReceiveDispatcher;
 import clink.net.qiujuer.clink.impl.async.AsyncSendDispatcher;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
 //连接基于channel
-public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatusChangedListener {
+public abstract class Connector implements Closeable,SocketChannelAdapter.OnChannelStatusChangedListener {
     //每个客户端连接 都有一个随机串
-    private UUID key= UUID.randomUUID();
+    protected UUID key= UUID.randomUUID();
     private SocketChannel channel;
     private Sender sender;
     private Receiver receiver;
@@ -29,9 +32,7 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
 
         this.sender = socketChannelAdapter;
         this.receiver = socketChannelAdapter;
-        /*channel.configureBlocking(false);*/
         //读消息
-        /*readNextMessage();*/
         sendDispatcher = new AsyncSendDispatcher(sender);
         receiveDispatcher = new AsyncReceiveDispatcher(receiver,receivePacketCallback);
         //启动接收
@@ -46,15 +47,10 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
 
     }
 
-    /*private void readNextMessage(){
-       if(receiver!=null){
-           try {
-               receiver.receiveAsync(echoReceiveListener);
-           } catch (IOException e) {
-               System.out.println("开始接受数据异常:"+e.getMessage());
-           }
-       }
-    }*/
+    public void send(SendPacket packet){
+        sendDispatcher.send(packet);
+    }
+
 
     public void close() throws IOException {
         receiveDispatcher.close();
@@ -67,34 +63,38 @@ public class Connector implements Closeable,SocketChannelAdapter.OnChannelStatus
     public void onChannelClosed(SocketChannel channel) {
     }
 
-    protected  void onReceiveNewMessage(String msg){
-        System.out.println(key.toString()+":"+msg);
+    protected abstract File createTempReceiveFile();
+
+    protected  void onReceivedPaclet(ReceivePacket packet){
+        System.out.println(key.toString()+":[new packet]-type:"+packet.type()
+                +",length:"+packet.length);
     }
 
 
-    /* private IoArgs.IoArgsEventListener echoReceiveListener = new IoArgs.IoArgsEventListener() {
-        public void onStarted(IoArgs args) {
+   private ReceiveDispatcher.ReceivePacketCallback  receivePacketCallback = new ReceiveDispatcher.ReceivePacketCallback(){
 
+        public ReceivePacket<?, ?> onArrivedNewPacket(byte type, long length) {
+
+            switch(type){
+                case Packet.TYPE_MEMORY_BYTES:
+                     return new BytesReceivePacket(length);
+                case Packet.TYPE_MEMORY_STRING:
+                    return new StringReveicePacket(length);
+                case Packet.TYPE_STRAM_FILE:
+                    return new FileReceivePacket(length,createTempReceiveFile());
+                case Packet.TYPE_STRING_DIRECT:
+                    return new BytesReceivePacket(length);
+                default:
+                    throw new UnsupportedOperationException("Unsupported packet type:"+type);
+            }
         }
-
-        public void onCompleted(IoArgs args) {
-            onReceiveNewMessage(args.bufferString());
-            //读取并且开始读下一条数据
-            readNextMessage();
-        }
-    }; */
-
-    private ReceiveDispatcher.ReceivePacketCallback  receivePacketCallback = new ReceiveDispatcher.ReceivePacketCallback(){
 
         public void onReceivePacketCompleted(ReceivePacket packet) {
             //判断接受的数据类型
-            if(packet instanceof StringReveicePacket){
-                String msg = ((StringReveicePacket)packet).string();
-                //把数据往外抛
-                onReceiveNewMessage(msg);
-            }
+            //if(packet instanceof StringReveicePacket){
+                onReceivedPaclet(packet);
+            //}
         }
     };
-
 
 }

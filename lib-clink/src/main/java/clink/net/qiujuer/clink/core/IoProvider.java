@@ -29,25 +29,11 @@ public interface IoProvider extends Closeable{
     }
 
     abstract class HandleOutputCallBack implements Runnable {
-        private Object attach;
         public void run() {
-            canProviderOutput(attach);
+            canProviderOutput();
         }
 
-        /*public final Object getAttach(){
-            return attach;
-        }*/
-        //如上图的泛型方法在方法名称前面有一个<T>声明，它的作用是告诉编译器编译的时候就识别它的类型
-        public final <T>T getAttach(){
-            T attach = (T)this.attach;
-            return attach;
-        }
-
-        public final void setAttach(Object attach){
-            this.attach = attach;
-        }
-
-        protected abstract void canProviderOutput(Object attach);
+        protected abstract void canProviderOutput();
 
     }
 

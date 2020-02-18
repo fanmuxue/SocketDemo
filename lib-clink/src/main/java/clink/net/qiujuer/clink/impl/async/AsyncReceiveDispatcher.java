@@ -1,32 +1,26 @@
 package clink.net.qiujuer.clink.impl.async;
 
-import clink.net.qiujuer.clink.box.StringReveicePacket;
-import clink.net.qiujuer.clink.core.IoArgs;
-import clink.net.qiujuer.clink.core.ReceiveDispatcher;
-import clink.net.qiujuer.clink.core.ReceivePacket;
-import clink.net.qiujuer.clink.core.Receiver;
+import clink.net.qiujuer.clink.core.*;
 import com.Socket2.L5ReceiveSend.Utils.CloseUtils;
 
 import java.io.IOException;
+import java.nio.channels.Channels;
+import java.nio.channels.WritableByteChannel;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class AsyncReceiveDispatcher implements ReceiveDispatcher{
+public class AsyncReceiveDispatcher implements ReceiveDispatcher,
+        IoArgs.IoArgsEventProcessor, AsyncPacketWriter.PacketProvider {
 
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
     private final Receiver receiver;
     private final ReceivePacketCallback callback;
 
-    private IoArgs ioArgs = new IoArgs();
-    private ReceivePacket packetTemp;
-    //每次接收数据先接收到buffer,随后放到packet
-    private byte[] buffer;
-    private int total;  //packet最大的大小
-    private int position; //当前读取的进度
+    private final AsyncPacketWriter writer = new AsyncPacketWriter(this);
 
     public AsyncReceiveDispatcher(Receiver receiver, ReceivePacketCallback callback) {
         this.receiver = receiver;
-        this.receiver.setReceiveAsync(ioArgsEventListener);
+        this.receiver.setReceiveListener(this);
         this.callback = callback;
     }
 
@@ -34,9 +28,19 @@ public class AsyncReceiveDispatcher implements ReceiveDispatcher{
         registerReceive();
     }
 
+    public void stop() {
+
+    }
+
+    public void close() throws IOException {
+        if (isClosed.compareAndSet(false, true)) {
+            writer.close();
+        }
+    }
+
     private void registerReceive() {
         try {
-            receiver.receiveAsync(ioArgs);
+            receiver.postReceiveAsync();
         } catch (IOException e) {
             closeAndNotify();
         }
@@ -46,78 +50,28 @@ public class AsyncReceiveDispatcher implements ReceiveDispatcher{
         CloseUtils.close(this);
     }
 
-    public void stop() {
 
+    public IoArgs provideIoArgs() {
+        return writer.takeIoArgs();
     }
 
-    public void close() throws IOException {
-        if(isClosed.compareAndSet(false,true)){
-            ReceivePacket packet = packetTemp;
-            if(packet!=null){
-                packetTemp = null;
-                CloseUtils.close(packet);
-            }
-
-        }
+    public void onConsumeFailed(IoArgs args, Exception e) {
+        e.printStackTrace();
     }
 
-    /**
-     * 完成数据接收操作
-     */
-    private void completePacket() {
-        ReceivePacket packetTemp = this.packetTemp;
-        CloseUtils.close(packetTemp);
-        //回调告诉外层，有一份新的数据接收到了
-        callback.onReceivePacketCompleted(packetTemp);
+    public void onConsumeCompleted(IoArgs args) {
+        do {
+            writer.consumeIoArgs(args);
+        } while (args.remained());
+        registerReceive(); //接收下一次数据
     }
 
-    private final IoArgs.IoArgsEventListener ioArgsEventListener = new IoArgs.IoArgsEventListener(){
-
-        public void onStarted(IoArgs args) {
-            int receiveSize;
-            if(packetTemp==null){
-                receiveSize =4;  //长度
-            }else{
-                receiveSize = Math.min(total-position,args.capacity());
-            }
-            //设置本次接收数据大小
-            args.limit(receiveSize);
-        }
-
-        public void onCompleted(IoArgs args) {
-            //当有数据来了，我们要解析数据
-            assemblePacket(args);
-            //继续接收下一条数据
-            registerReceive();
-        }
-    };
-
-    /**
-     * 解析数据到packet
-     * @param args
-     */
-    private void assemblePacket(IoArgs args) {
-
-        if(packetTemp == null){
-            int length =args.readLength();
-            // 读取长度，当做string接收
-            packetTemp = new StringReveicePacket(length);
-            buffer = new byte[length];
-            total = length;
-            position = 0;
-        }
-
-        int count = args.writeTo(buffer,0);
-        if(count>0){
-           packetTemp.save(buffer,count);
-           position +=count;
-           //检查是否已完成一份packet接收
-           if(position == total){
-             completePacket();
-             packetTemp = null;
-           }
-        }
+    public ReceivePacket takePacket(byte type, long length, byte[] hreadInfo) {
+        return callback.onArrivedNewPacket(type, length);
     }
 
-
+    public void completedPacket(ReceivePacket packet, boolean isSucceed) {
+        CloseUtils.close(packet);
+        callback.onReceivePacketCompleted(packet);
+    }
 }

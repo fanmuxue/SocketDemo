@@ -2,31 +2,29 @@ package clink.net.qiujuer.clink.box;
 
 import clink.net.qiujuer.clink.core.ReceivePacket;
 
+import javax.swing.text.html.parser.Entity;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.IOException;
+import java.util.stream.Stream;
 
-public class StringReveicePacket extends ReceivePacket {
-    private byte[] buffer;
-    private int position; //每次存的时候的坐标
+public class StringReveicePacket extends AbsByteArrayReceivePacket<String> {
 
-    public StringReveicePacket(int len){
-        buffer = new byte[len];
-        length = len;
+    public StringReveicePacket(long len){
+       super(len);
     }
 
-    @Override
-    public void save(byte[] bytes, int count) {
-        //把传过来的bytes放入buffer中，从0开始，copy的坐标为position 还有最长的长度
-       System.arraycopy(bytes,0,buffer,position,count);
-       //每次copy完后，坐标要叠加
-       position += count;
+    public byte type() {
+        return TYPE_MEMORY_STRING;
     }
 
-    public String string(){
-        return new String(buffer);
+    protected ByteArrayOutputStream createStream() {
+        return new ByteArrayOutputStream((int)length);
     }
 
-    //为以后做准备
-    public void close() throws IOException {
-
+    protected String buildEntity(ByteArrayOutputStream stream) {
+        return new String(stream.toByteArray());
     }
+
 }

@@ -4,6 +4,7 @@ package server;
 import com.Socket2.L5ReceiveSend.Utils.CloseUtils;
 import server.handle.ClientHandle;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -21,20 +22,21 @@ import java.util.concurrent.Executors;
  */
 public class TCPServer implements ClientHandleCallBack{
     private final int port;
+    private final File cachePath;
     private ClientListener clientListener;
     private List<ClientHandle> clientHandles = new ArrayList<ClientHandle>();
     private final ExecutorService forwordingThreadPoolExecutor;
     private Selector selector;
     private ServerSocketChannel serverSocketChannel;
 
-    public TCPServer(int port){
+    public TCPServer(int port,File cachePath){
         this.port = port;
+        this.cachePath = cachePath;
         //使用固定线程池来 吧接受的数据，广播给所有的客户端
         this.forwordingThreadPoolExecutor = Executors.newSingleThreadExecutor();
     }
 
     public boolean start(){
-        ClientListener clientListener = null;
         try {
             //开启一个客户端选择器
             //为什么不是new,因为Selector是抽象类  selector.open得到是一个空闲的selector
@@ -52,8 +54,7 @@ public class TCPServer implements ClientHandleCallBack{
             System.out.println("服务器信息："+ serverSocketChannel.getLocalAddress().toString());
 
             //启动客户端的监听  目的：打开监听通道，服务端监听打到的客户端，并且add进入list
-            clientListener = new ClientListener();
-            this.clientListener=clientListener;
+            ClientListener clientListener =this.clientListener =new ClientListener();
             clientListener.start();
         } catch (IOException e) {
             e.printStackTrace();
@@ -144,7 +145,7 @@ public class TCPServer implements ClientHandleCallBack{
                             //客户端构建异步线程
                             try {
                                 ClientHandle clientHandle = new ClientHandle(socketChannel,
-                                        TCPServer.this);
+                                        TCPServer.this,cachePath);
                                 synchronized(TCPServer.this) {
                                     clientHandles.add(clientHandle);
                                 }
